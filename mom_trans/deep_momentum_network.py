@@ -1,10 +1,6 @@
-import os
-import json
-import pathlib
-import shutil
 import copy
+import keras_tuner as kt
 
-from keras_tuner.tuners.randomsearch import RandomSearch
 from abc import ABC, abstractmethod
 
 from tensorflow import keras
@@ -13,7 +9,6 @@ import numpy as np
 import pandas as pd
 import collections
 
-import keras_tuner as kt
 
 from settings.hp_grid import (
     HP_HIDDEN_LAYER_SIZE,
@@ -22,8 +17,6 @@ from settings.hp_grid import (
     HP_LEARNING_RATE,
     HP_MINIBATCH_SIZE,
 )
-
-from settings.fixed_params import MODLE_PARAMS
 
 from mom_trans.model_inputs import ModelFeatures
 from empyrical import sharpe_ratio
