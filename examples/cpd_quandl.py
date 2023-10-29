@@ -1,7 +1,6 @@
 import argparse
 import datetime as dt
 
-import pandas as pd
 
 import mom_trans.changepoint_detection as cpd
 from mom_trans.data_prep import calc_returns
@@ -16,6 +15,7 @@ def main(
     data = pull_quandl_sample_data(ticker)
     data["daily_returns"] = calc_returns(data["close"])
 
+    # cpd.run_module gets the change-point detection.
     cpd.run_module(
         data, lookback_window_length, output_file_path, start_date, end_date, USE_KM_HYP_TO_INITIALISE_KC
     )

@@ -109,6 +109,8 @@ venv/
 ENV/
 env.bak/
 venv.bak/
+# My virtual environment
+momentum_transformer/
 
 # Spyder project settings
 .spyderproject

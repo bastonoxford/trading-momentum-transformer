@@ -4,6 +4,15 @@ from tensorflow import keras
 import gc
 import numpy as np
 
+from mom_trans.deep_momentum_network import DeepMomentumNetworkModel, SharpeLoss
+from settings.hp_grid import (
+    HP_DROPOUT_RATE,
+    HP_HIDDEN_LAYER_SIZE,
+    HP_LEARNING_RATE,
+    HP_MAX_GRADIENT_NORM,
+    HP_MINIBATCH_SIZE,
+)
+
 concat = keras.backend.concatenate
 stack = keras.backend.stack
 K = keras.backend
@@ -15,14 +24,6 @@ Dropout = keras.layers.Dropout
 Activation = keras.layers.Activation
 Lambda = keras.layers.Lambda
 
-from mom_trans.deep_momentum_network import DeepMomentumNetworkModel, SharpeLoss
-from settings.hp_grid import (
-    HP_DROPOUT_RATE,
-    HP_HIDDEN_LAYER_SIZE,
-    HP_LEARNING_RATE,
-    HP_MAX_GRADIENT_NORM,
-    HP_MINIBATCH_SIZE,
-)
 
 def tf_stack(x, axis=0):
     if not isinstance(x, list):

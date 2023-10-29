@@ -1,5 +1,3 @@
-import keras_tuner as kt
-
 HP_HIDDEN_LAYER_SIZE = [5, 10, 20, 40, 80, 160]
 HP_DROPOUT_RATE = [0.1, 0.2, 0.3, 0.4, 0.5]
 HP_MINIBATCH_SIZE= [64, 128, 256]

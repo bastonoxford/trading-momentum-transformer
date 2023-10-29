@@ -35,12 +35,12 @@ def get_single_col_by_input_type(input_type, column_definition):
       column_definition: Column definition list for experiment
     """
 
-    l = [tup[0] for tup in column_definition if tup[2] == input_type]
+    l_var = [tup[0] for tup in column_definition if tup[2] == input_type]
 
-    if len(l) != 1:
+    if len(l_var) != 1:
         raise ValueError("Invalid number of columns for {}".format(input_type))
 
-    return l[0]
+    return l_var[0]
 
 
 def extract_cols_from_data_type(data_type, column_definition, excluded_input_types):
@@ -130,10 +130,10 @@ class ModelFeatures:
                 ("day_of_week", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT)
             )
             self._column_definition.append(
-                (f"day_of_month", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT)
+                ("day_of_month", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT)
             )
             self._column_definition.append(
-                (f"week_of_year", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT)
+                ("week_of_year", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT)
             )
             # self._column_definition.append(
             #     (f"month_of_year", DataTypes.REAL_VALUED, InputTypes.KNOWN_INPUT)
@@ -163,7 +163,7 @@ class ModelFeatures:
 
         if add_ticker_as_static:
             self._column_definition.append(
-                (f"static_ticker", DataTypes.CATEGORICAL, InputTypes.STATIC_INPUT)
+                ("static_ticker", DataTypes.CATEGORICAL, InputTypes.STATIC_INPUT)
             )
             df["static_ticker"] = df["ticker"]
             if static_ticker_type_feature:
@@ -172,7 +172,7 @@ class ModelFeatures:
                 )
                 self._column_definition.append(
                     (
-                        f"static_ticker_type",
+                        "static_ticker_type",
                         DataTypes.CATEGORICAL,
                         InputTypes.STATIC_INPUT,
                     )

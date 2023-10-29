@@ -2,7 +2,6 @@ import os
 from typing import Tuple, List, Dict
 import tensorflow as tf
 import pandas as pd
-import datetime as dt
 import numpy as np
 import shutil
 import gc
@@ -445,7 +444,7 @@ def run_single_window(
     val_loss = dmn.evaluate(model_features.valid, best_model)
 
     print(f"Best validation loss = {val_loss}")
-    print(f"Best params:")
+    print("Best params:")
     for k in best_hp:
         print(f"{k} = {best_hp[k]}")
 
