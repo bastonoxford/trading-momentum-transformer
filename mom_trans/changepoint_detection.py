@@ -377,7 +377,7 @@ def run_module(
                     kC_likelihood_variance=1.0,
                 )
 
-        except:
+        except Exception:
             # write as NA when fails and will deal with this later
             cp_score, cp_loc, cp_loc_normalised = "NA", "NA", "NA"
 
