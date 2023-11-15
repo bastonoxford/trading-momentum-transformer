@@ -21,19 +21,24 @@ def linear_layer(size, activation=None, use_time_distributed=False, use_bias=Tru
         activation: Activation function to apply if required
         use_time_distributed: Whether to apply layer across time
         use_bias: Whether bias should be included in layer
+    Returns
+    -------
+        linear: a single keras layer
+
+    Anthony's notes: idea - just gets a middle layer (with TD wrapping if required)
     """
-    linear = keras.layers.Dense(size, activation=None, use_time_distributed=False, use_bias=True)
+    linear = keras.layers.Dense(size, activation=activation, use_time_distributed=False, use_bias=use_bias)
     if use_time_distributed:
         linear = keras.layers.TimeDistributed(linear)
-    return linear
+    return linear 
 
 def apply_mlp(
-        inputs,
-        hidden_size,
-        output_size,
-        output_activation=None,
-        hidden_activation='tanh',
-        use_time_distributed=False
+    inputs,
+    hidden_size,
+    output_size,
+    output_activation=None,
+    hidden_activation='tanh',
+    use_time_distributed=False
 ):
     """Applies simple feed-forward network to an input.
     Args:
@@ -45,6 +50,9 @@ def apply_mlp(
       use_time_distributed: Whether to apply across time
     Returns:
       Tensor for MLP outputs.
+
+    Anthony's Note: idea - we're getting a shallow (depth 1) NN. TimeDistributed is used when we have sequential inputs.
+    Same weights are applied to each of the time distributed inputs.
     """
     if use_time_distributed:
         hidden = keras.layers.TimeDistributed(
@@ -52,7 +60,7 @@ def apply_mlp(
         )(inputs)
         return keras.layers.TimeDistributed(
             keras.layers.Dense(output_size, activation=output_activation)
-        )
+        )(hidden)
     else:
         hidden = keras.layers.Dense(hidden_size, activation=hidden_activation)(inputs)
         return keras.layers.Dense(output_size, activation=output_activation)(hidden)
@@ -82,6 +90,7 @@ def apply_gating_layer(
 
 
     if use_time_distributed:
+        "Anthony's notes: see equation 31 of MomTrans paper"
         activation_layer = keras.layers.TimeDistributed(
             keras.layers.Dense(hidden_layer_size, activation=activation)
         )(x)
@@ -102,12 +111,15 @@ def add_and_norm(x_list):
     Returns
     -------
         Tensor output from layer.
+
+    Anthony's notes: idea - simply add together and normalise the outputs of the layers in x_list
     """
     tmp = keras.layers.Add()(x_list)
     tmp = keras.layers.LayerNormalization()(tmp)
     return tmp
 
 
+# TODO Flesh me out some more!
 def gated_residual_network(
         x,
         hidden_layer_size: int,
@@ -130,6 +142,8 @@ def gated_residual_network(
     Returns
     -------
         Tuple of tensors for: (GRN output, GLU gate)
+    
+    Anthony's notes: idea - refer to p.17 and 18, flesh out still please # TODO
     """
 
     if output_size is None:
@@ -178,6 +192,8 @@ def get_decoder_mask(self_attn_inputs):
     """
     len_s = tf.shape(self_attn_inputs)[-2]
     bs = tf.shape(self_attn_inputs)[:-2]
+    # From ChatGPT: this should return a mask that is a tensor of matrices,
+    # where each matrix is lower triangular to mask inputs that would correspond to above the diagonal
     mask = tf.cumsum(tf.eye(len_s, batch_shape=bs), -2)
     return mask
     
@@ -211,8 +227,8 @@ class ScaledDotProductAttention(keras.layers.Layer):
             tuple of (layer outputs, attention weights)
 
         """
-        attn = keras.layers.Lambda(self.scaled_batchdot)([q, k])
-        if mask is not None:
+        attn = keras.layers.Lambda(scaled_batchdot)([q, k])
+        if mask:
             mmask = keras.layers.Lambda(lambda x: (-1e9) * (1.0 - tf.cast(x, 'float32')))(mask)
             attn = keras.layers.add([attn, mmask])
         attn = self.activate(attn)
@@ -220,10 +236,10 @@ class ScaledDotProductAttention(keras.layers.Layer):
         output = keras.layers.Lambda(lambda x: keras.backend.batch_dot(x[0], x[1]))([attn, v])
         return output, attn
     
-    def scaled_batchdot(input_list):
-        d, k = input_list
-        dimension = tf.sqrt(tf.cast(k.shape[-1], dtype='float32'))
-        return keras.backend.batch_dot(d, k, axes=[2, 2]) / dimension
+def scaled_batchdot(input_list):
+    q, k = input_list
+    dimension = tf.sqrt(tf.cast(k.shape[-1], dtype='float32'))
+    return keras.backend.batch_dot(q, k, axes=[2, 2]) / dimension
 
 class InterpretableMultiHeadAttention(keras.layers.Layer):
     """Defines interpretable multi-head attention layer.
@@ -294,14 +310,13 @@ class InterpretableMultiHeadAttention(keras.layers.Layer):
             heads.append(head_dropout)
             attns.append(attn)
 
-        keras.backend.stack((lambda x, axis=0: [x] if not isinstance(x, list) else x), axis=0)
         head = keras.layers.Lambda(
             keras.backend.stack(
-                (lambda x, axis=0: [x] if not isinstance(x, list) else x), axis=0)
+                (lambda x: [x] if not isinstance(x, list) else x), axis=0)
                 )(heads) if self.n_head >= 1 else heads[0]
         attn = keras.layers.Lambda(
             keras.backend.stack(
-                (lambda x, axis=0: [x] if not isinstance(x, list) else x), axis=0)
+                (lambda x: [x] if not isinstance(x, list) else x), axis=0)
         )(attns)
 
         outputs = keras.layers.Lambda(keras.backend.mean, arguments={"axis": 0})(head) if self.n_head > 1 else head
@@ -340,7 +355,294 @@ class TFTDeepMomentumNetworkModel(DeepMomentumNetworkModel):
         super().__init__(project_name, hp_directory, hp_minibatch_size, **copy_params)
 
     def model_builder(self, hp):
-        pass
+        
+        self.hidden_layer_size = hp.Choice(
+            'hidden_layer_size', values=HP_HIDDEN_LAYER_SIZE
+        )
+
+        self.dropout_rate = hp.Choice(
+            "dropout_rate", values=HP_DROPOUT_RATE
+        )
+        self.max_gradient_norm = hp.Choice(
+            'max_gradient_norm', values=HP_MAX_GRADIENT_NORM
+        )
+        self.learning_rate = hp.Choice(
+            'learning_rate', values=HP_LEARNING_RATE
+        )
+        time_steps = self.time_steps
+        combined_input_size = self.input_size
+
+        all_inputs = keras.layers.Input(
+            shape=(
+                time_steps,
+                combined_input_size,
+            ),
+            name='input'
+        )
+
+        unknown_inputs, known_combined_layer, static_inputs = self.get_tft_embeddings(all_inputs)
+
+        if unknown_inputs:
+            historical_inputs = keras.backend.concatenate(
+                [
+                    unknown_inputs,
+                    known_combined_layer
+                ],
+                axis=1,
+            )
+        else:
+            historical_inputs = keras.backend.concatenate(
+                [
+                    known_combined_layer
+                ],
+                axis=1
+            )
+        
+        def static_combine_and_mask(embedding):
+            """Applies variable selection network to static inputs.
+
+            Parameters
+            ----------
+                embedding: Transformed static inputs
+
+            Returns
+            -------
+                Tensor output for variable selection network
+            """
+            _, num_static, static_dim = embedding.get_shape().as_list()[-3:]
+
+            shape = tf.shape(embedding)
+            flatten = tf.reshape(
+                embedding, tf.concat([shape[:-2], [num_static * static_dim]], axis=-1)
+            )
+
+            mlp_outputs = gated_residual_network(
+                flatten,
+                self.hidden_layer_size,
+                output_size=num_static,
+                dropout_rate=self.dropout_rate,
+                use_time_distributed=False,
+                additional_context=None
+            )
+
+            sparse_weights = keras.layers.Activation('softmax')(mlp_outputs)
+            sparse_weights = keras.layers.Lambda(tf.expand_dims, arguments={'axis': -1})(sparse_weights)
+
+            trans_emb_list = []
+            for i in range(num_static):
+                e = gated_residual_network(
+                    embedding[:, i : i + 1, :],
+                    self.hidden_layer_size,
+                    dropout_rate=self.dropout_rate,
+                    use_time_distributed=False
+                )
+                trans_emb_list.append(e)
+
+            transformed_embedding = (
+                keras.layers.Concatenate(axis=1)(trans_emb_list)
+                if len(trans_emb_list) > 1 else trans_emb_list[0]
+            )
+
+            combined = keras.layers.multiply([sparse_weights, transformed_embedding])
+
+            static_vec = keras.layers.Lambda(keras.backend.sum, arguments={'axis': 1})(combined)
+
+            return static_vec, sparse_weights
+        
+        static_encoder, static_weights = static_combine_and_mask(static_inputs)
+
+        static_context_variable_selection = gated_residual_network(
+            static_encoder,
+            self.hidden_layer_size,
+            dropout_rate=self.dropout_rate,
+            use_time_distributed=False,
+        )
+        static_context_enrichment = gated_residual_network(
+            static_encoder,
+            self.hidden_layer_size,
+            dropout_rate=self.dropout_rate,
+            use_time_distributed=False,
+        )
+        static_context_state_h = gated_residual_network(
+            static_encoder,
+            self.hidden_layer_size,
+            dropout_rate=self.dropout_rate,
+            use_time_distributed=False,
+        )
+        static_context_state_c = gated_residual_network(
+            static_encoder,
+            self.hidden_layer_size,
+            dropout_rate=self.dropout_rate,
+            use_time_distributed=False,
+        )
+
+        def lstm_combine_and_mask(embedding):
+            """
+            Apply temporal variable selection network
+            
+            Parameters
+            ----------
+                embedding: transformed inmputs
+            Returns
+            -------
+                processed tensor outputs
+                
+            """
+            time_steps, embedding_dim, num_inputs = embedding.get_shape().as_list()[-3:]
+            
+            batch_dimensions = tf.shape(embedding)[:-3]
+
+            new_shape = tf.concat(
+                [batch_dimensions, [time_steps, embedding_dim * num_inputs]], axis=-1
+            )
+            flatten = tf.reshape(embedding, new_shape)
+
+            if static_inputs is not None:
+                expanded_static_context = keras.layers.Lambda(tf.expand_dims, arguments={"axis": 1})(
+                    static_context_variable_selection
+                    )
+            else:
+                expanded_static_context = None
+
+            mlp_outputs, static_gate = gated_residual_network(
+                flatten,
+                self.hidden_layer_size,
+                output_size=num_inputs,
+                dropout_rate=self.dropout_rate,
+                use_time_distributed=True,
+                additional_context=expanded_static_context,
+                return_gate=True
+            )
+
+            sparse_weights = keras.layers.Activation('softmax')(mlp_outputs)
+            sparse_weights = keras.layers.Lambda(tf.expand_dims, arguments={'axis': -2})(sparse_weights)
+
+            trans_emb_list = []
+            for i in range(num_inputs):
+                grn_output = gated_residual_network(
+                    embedding[..., i],
+                    self.hidden_layer_size,
+                    dropout_rate=self.dropout_rate,
+                    use_time_distributed=True
+                )
+                trans_emb_list.append(grn_ouptut)
+
+            transformed_embedding = keras.layers.Lambda(
+                keras.backend.stack((lambda x: [x] if not isinstance(x, list) else x), axis=-1)
+            )(trans_emb_list)
+
+            combined = keras.layers.multiply([sparse_weights, transformed_embedding])
+
+            temporal_ctx = keras.layers.Lambda(keras.backend.sum, arguments={'axis': -1})(combined)
+
+            return temporal_ctx, sparse_weights, static_gate
+    
+        input_embeddings, flags, _  = lstm_combine_and_mask(historical_inputs)
+
+        def get_lstm(return_state):
+
+            lstm = keras.layers.LSTM(
+                self.hidden_layer_size,
+                return_sequences=True,
+                return_state=return_state,
+                stateful=False,
+                activation='tanh',
+                recurrent_activation='sigmoid',
+                recurrent_dropout=0,
+                unroll=False,
+                use_bias=True
+            )
+            return lstm
+        
+        lstm_layer = get_lstm(return_state=False)(
+            input_embeddings,
+            initial_state=[static_context_state_h, static_context_state_c]
+        )
+
+        lstm_layer, _ = apply_gating_layer(
+            lstm_layer, self.hidden_layer_size, self.dropout_rate, activation=None
+        )
+
+        temporal_feature_layer = add_and_norm([lstm_layer, input_embeddings])
+
+        expanded_static_context = keras.backend.Lambda(tf.expand_dims, arguments={'axis': -2})(
+            static_context_enrichment
+        )
+
+        enriched, _ = gated_residual_network(
+            temporal_feature_layer,
+            self.hidden_layer_size,
+            dropout_rate=self.dropout_rate,
+            use_time_distributed=True,
+            additional_context=expanded_static_context
+        )
+
+        self_attn_layer = InterpretableMultiHeadAttention(
+            self.num_heads, self.hidden_layer_size, dropout=self.dropout_rate
+        )
+
+        mask=get_decoder_mask(enriched)
+        x, self_attn = self_attn_layer(enriched, enriched, enriched, enriched, mask=mask)
+        
+        x, _ = apply_gating_layer(
+            x, self.hidden_layer_size, dropout_rate=self.dropout_rate, activation=None
+        )
+        x = add_and_norm([x, enriched])
+
+        decoder = gated_residual_network(
+            x,
+            self.hidden_layer_size,
+            dropout_rate=self.dropout_rate,
+            use_time_distributed=True
+        )
+
+        decoder, _ = apply_gating_layer(
+            decoder, self.hidden_layer_size, activation=None
+        )
+        
+        transformer_layer = add_and_norm([decoder, temporal_feature_layer])
+
+        attention_components = {
+            'decoder_self_attn': self_attn,
+            'static_flags': static_weights[..., 0] if static_inputs else [],
+            'historical_flags': flags[..., 0, :],
+            'future_flags': flags[..., 0, :]
+        }
+
+        if self.force_output_sharpe_length:
+            outputs = keras.layers.TimeDistributed(
+                keras.layers.Dense(
+                    self.output_size,
+                    activation=tf.nn.tanh,
+                    kernel_constraint=keras.constraints.max_norm(3)
+                )
+            )(transformer_layer[Ellipsis, -self.force_output_sharpe_length:, :])
+        
+        else:
+            outputs = keras.layers.TimeDistributed(
+                keras.layers.Dense(
+                    self.output_size,
+                    activation=tf.nn.tanh,
+                    kernel_constraint=keras.constraints.max_norm(3),
+                )
+            )(transformer_layer[Ellipsis, :, :])
+
+        self._attention_components = attention_components
+
+        adam = keras.optimizers.Adam(
+            lr=self.learning_rate, clipnorm=self.max_gradient_norm
+        )
+
+        model = keras.Model(inputs=all_inputs, outputs=outputs)
+
+        sharpe_loss = SharpeLoss(self.output_size).call
+
+        model.compile(loss=sharpe_loss, optimizer=adam, sample_weight_mode='temporal')
+
+        self._input_placeholder = all_inputs
+
+        return model
+
 
     def get_tft_embeddings(self, all_inputs):
         """Transforms raw inputs into embeddings.
