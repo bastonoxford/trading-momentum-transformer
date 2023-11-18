@@ -112,7 +112,7 @@ def add_and_norm(x_list):
     -------
         Tensor output from layer.
 
-    Anthony's notes: idea - simply add together and normalise the outputs of the layers in x_list
+    Anthony's notes: idea - simply add together and normalise the outputs of the layers in x_list, must be same size.
     """
     tmp = keras.layers.Add()(x_list)
     tmp = keras.layers.LayerNormalization()(tmp)
@@ -237,9 +237,10 @@ class ScaledDotProductAttention(keras.layers.Layer):
         return output, attn
     
 def scaled_batchdot(input_list):
+    # Comptues attention (with scaling factor) by the batch
     q, k = input_list
-    dimension = tf.sqrt(tf.cast(k.shape[-1], dtype='float32'))
-    return keras.backend.batch_dot(q, k, axes=[2, 2]) / dimension
+    dimension_sqrt = tf.sqrt(tf.cast(k.shape[-1], dtype='float32'))
+    return keras.backend.batch_dot(q, k, axes=[2, 2]) / dimension_sqrt
 
 class InterpretableMultiHeadAttention(keras.layers.Layer):
     """Defines interpretable multi-head attention layer.
@@ -476,7 +477,7 @@ class TFTDeepMomentumNetworkModel(DeepMomentumNetworkModel):
             use_time_distributed=False,
         )
 
-        def lstm_combine_and_mask(embedding):
+        def lstm_combine_and_mask_vsn(embedding):
             """
             Apply temporal variable selection network
             
@@ -525,7 +526,7 @@ class TFTDeepMomentumNetworkModel(DeepMomentumNetworkModel):
                     dropout_rate=self.dropout_rate,
                     use_time_distributed=True
                 )
-                trans_emb_list.append(grn_ouptut)
+                trans_emb_list.append(grn_output)
 
             transformed_embedding = keras.layers.Lambda(
                 keras.backend.stack((lambda x: [x] if not isinstance(x, list) else x), axis=-1)
@@ -537,7 +538,7 @@ class TFTDeepMomentumNetworkModel(DeepMomentumNetworkModel):
 
             return temporal_ctx, sparse_weights, static_gate
     
-        input_embeddings, flags, _  = lstm_combine_and_mask(historical_inputs)
+        input_embeddings, flags, _  = lstm_combine_and_mask_vsn(historical_inputs)
 
         def get_lstm(return_state):
 
@@ -576,12 +577,16 @@ class TFTDeepMomentumNetworkModel(DeepMomentumNetworkModel):
             use_time_distributed=True,
             additional_context=expanded_static_context
         )
-
+    
+        # Initialise Attention 
         self_attn_layer = InterpretableMultiHeadAttention(
             self.num_heads, self.hidden_layer_size, dropout=self.dropout_rate
         )
 
         mask=get_decoder_mask(enriched)
+
+        # Attention called on enriched i.e. enriched gives keys, queries and values, fits strongly with idea of probabilities
+        # and intuitive. Matrices for inner products and value matrix may differ.
         x, self_attn = self_attn_layer(enriched, enriched, enriched, enriched, mask=mask)
         
         x, _ = apply_gating_layer(
@@ -633,6 +638,7 @@ class TFTDeepMomentumNetworkModel(DeepMomentumNetworkModel):
             lr=self.learning_rate, clipnorm=self.max_gradient_norm
         )
 
+        # This is crucial and defines the model - ref outputs.
         model = keras.Model(inputs=all_inputs, outputs=outputs)
 
         sharpe_loss = SharpeLoss(self.output_size).call

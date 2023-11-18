@@ -128,8 +128,6 @@ class TunerValidationLoss(kt.tuners.RandomSearch):
         super(TunerValidationLoss, self).run_trial(trial, *args, **kwargs)
 
 
-
-
 class TunerDiversifiedSharpe(kt.tuners.RandomSearch):
 
     def __init__(
@@ -209,12 +207,50 @@ class DeepMomentumNetworkModel(ABC):
         self.n_multiprocessing_workers = int(params.pop('multiprocessing_workers'), np.nan)
         self.num_epochs = int(params.pop('num_epochs', np.nan))
         self.early_stopping_patience = int(params.pop('early_stopping_patience', np.nan))
-        self.random_search_iterations = int(params.pop('random_search_iterations', np.nan))
-        self.evaluate_diversified_val_sharpe = int(params.pop('evaluate_diversified_val_sharpe', np.nan))
-        self.force_output_sharpe_length = int(params.pop('force_output_sharpe_length', np.nan))
+        self.random_search_iterations = params.pop('random_search_iterations', np.nan)
+        self.evaluate_diversified_val_sharpe = params.pop('evaluate_diversified_val_sharpe', np.nan)
+        self.force_output_sharpe_length = params.pop('force_output_sharpe_length', np.nan)
 
         if self.evaluate_diversified_val_sharpe:
+            self.tuner = TunerDiversifiedSharpe(
+                self.model_builder,
+                objective=kt.Objective('sharpe', 'max'),
+                hp_minibatch_size=hp_minibatch_size,
+                max_trials=self.random_search_iterations,
+                directory=hp_directory,
+                project_name=project_name
+            )
+        else:
+            self.tuner = TunerValidationLoss(
+                self.model_builder,
+                objective='val_loss',
+                hp_minibatch_size=hp_minibatch_size,
+                max_triuals=self.random_search_iterations,
+                directory=hp_directory,
+                project_name=project_name
+            )
 
-            
+        
+    @abstractmethod
+    def model_builder(self, hp):
+        return
+    
 
+    @staticmethod
+    def _index_times(val_time):
+        val_time_unique = np.sort(np.unique(val_time))
+        if val_time_unique[0]:
+            val_time_unique = np.insert(val_time_unique, 0, "")
+        mapping = dict(zip(val_time_unique, range(len(val_time_unique))))
 
+        @np.vectorize
+        def get_indices(t):
+            return mapping[t]
+
+        return get_indices(val_time), len(mapping)
+    
+    def hyperparameter_search(self, train_data, valid_data):
+
+        data, labels, active_flags, _, _ = ModelFeatures._unpack(train_data)
+
+        val_data, val_labels, val_flags, _, val_time = ModelFeatures._unpack(valid_data)
