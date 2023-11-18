@@ -91,6 +91,7 @@ def fit_matern_kernel(
         noise_variance=likelihood_variance,
     )
     opt = gpflow.optimizers.Scipy()
+    # negative log marginal likelihood: nlml
     nlml = opt.minimize(
         m.training_loss, m.trainable_variables, options=dict(maxiter=MAX_ITERATIONS)
     ).fun

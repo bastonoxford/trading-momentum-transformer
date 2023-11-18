@@ -1,4 +1,4 @@
-#  Idea behind Gaussian Process Detection: you have two Gaussian Process going on.
+#  Idea behind Gaussian Process Detection: you have two Gaussian Process going on in a given lookback window
 
 import csv
 import datetime as dt
@@ -25,6 +25,21 @@ class ChangePointsWithBounds(ChangePoints):
             steepness: float = 1.0,
             name: Optional[str] = None,
     ):
+        """Inherit from the Changepoints class to
+        1) only take a single location
+        2) so location is bounded by interval
+
+
+        Args:
+            kernels (Tuple[Kernel, Kernel]): the left hand and right hand kernels
+            location (float): changepoint location initialisation, must lie within interval
+            interval (Tuple[float, float]): the interval which bounds the changepoint hyperparameter
+            steepness (float, optional): initialisation of the steepness parameter. Defaults to 1.0.
+            name (Optional[str], optional): class name. Defaults to None.
+
+        Raises:
+            ValueError: errors if intial changepoint location is not within interval
+        """
         
         if location < interval[0] or location > interval[1]:
             raise ValueError(
@@ -35,7 +50,7 @@ class ChangePointsWithBounds(ChangePoints):
         locations = tf.variable([location])
 
         # Investigate this
-        super().__init(
+        super().__init__(
             kernels=kernels, locations=locations, steepness=steepness, name=name
         )
 
@@ -135,7 +150,7 @@ def fit_changepoint_kernel(
     params = {
         'k1_variance': m.kernel.kernels[0].variance.numpy().flatten()[0],
         'k1_lengthscale': m.kernel.kernels[0].lengthscales.numpy().flatten()[0],
-        "k2_variance": m.kernel.kernels[1].variance.numpr().flatten()[0],
+        "k2_variance": m.kernel.kernels[1].variance.numpy().flatten()[0],
         "k2_lengthscale": m.kernel.kernels[1].lengthscales.numpy().flatten()[0],
         "kC_likelihood_variance": m.likelihood.variance.numpy().flatten()[0],
         "kC_changepoint_location": changepoint_location,
@@ -154,7 +169,7 @@ def changepoint_severity(
         kC_nlml (Union[float, List[float]]):
             negative log marginal likelihood of Changepoint kernel
         kM_nlml (Union[float, List[float]]):
-            negative log marginal likelihood of Matern 3/2 kernel
+            negative log marginal likelihood of Single Matern 3/2 kernel
 
     Returns:
         float: changepoint score
@@ -177,7 +192,7 @@ def changepoint_loc_and_score(
         kC_steepness = 1.0
 ) -> Tuple[float, float, float, Dict[str, float], Dict[str, float]]:
     """
-    For a single time-series window, calcualte changepoint score and location as detailed in https://arxiv.org/pdf/2105.13727.pdf
+    For a single time-series window, calculate changepoint score and location as detailed in https://arxiv.org/pdf/2105.13727.pdf
 
     Args:
         time_series_data_window (pd.DataFrame): time-series with columns X and Y
@@ -230,13 +245,13 @@ def changepoint_loc_and_score(
         k1_variance = kM_params['kM_variance']
     
     if not k1_lengthscale:
-        k1_lengthscale = kM_params['k1_lengthscale']
+        k1_lengthscale = kM_params['kM_lengthscale']
 
     if not k2_variance:
-        k2_variance = kM_params['k2_variance']
+        k2_variance = kM_params['kM_variance']
 
     if not k2_lengthscale:
-        k2_lengthscale = kM_params['k2_lengthscale']
+        k2_lengthscale = kM_params['kM_lengthscale']
 
     if not kC_likelihood_variance:
         kC_likelihood_variance = kM_params["kM_likelihood_variance"]
@@ -280,7 +295,7 @@ def run_module(
         output_csv_file_path: str,
         start_date: dt.datetime = None,
         end_date: dt.datetime = None,
-        us_kM_hpy_to_initialise_kC=True,
+        use_kM_hpy_to_initialise_kC=True,
 ):
     """
     Run the changepoint detection module as described in the arxiv paper,
@@ -317,7 +332,7 @@ def run_module(
     elif not start_date and not end_date:
         time_series_data = time_series_data.copy()
     elif not start_date:
-        time_series_data = time_series_data.iloc[:end_date, :].copy()
+        time_series_data = time_series_data.loc[:end_date, :].copy()
     elif not end_date:
         first_window = time_series_data\
             .loc[:start_date]\
@@ -330,13 +345,7 @@ def run_module(
         
         time_series_data = pd.concat([first_window, remaining_data]).copy()
 
-    csv_fields = [
-        'date',
-        't',
-        'cp_location',
-        'cp_location_norm',
-        'cp_score'
-        ]
+    csv_fields = ['date', 't', 'cp_location', 'cp_location_norm', 'cp_score']
     with open(output_csv_file_path, 'w') as f:
         writer = csv.writer(f)
         writer.writerow(csv_fields)
@@ -352,7 +361,7 @@ def run_module(
         window_date = ts_data_window['date'].iloc[-1].strftime("%Y-%m-%d")
 
         try:
-            if us_kM_hpy_to_initialise_kC:
+            if use_kM_hpy_to_initialise_kC:
                 cp_score, cp_loc, cp_loc_normalised, _, _ = changepoint_loc_and_score(
                     ts_data_window
                 )
