@@ -133,7 +133,8 @@ dmypy.json
 results/
 .vscode/
 nohup*
-data/*
+data/__pycache__
+data/quandl_cpd_nonelbw.csv
 !data/pull_data.py
 !data/download_quandl_data.py
 !data/__init__.py
