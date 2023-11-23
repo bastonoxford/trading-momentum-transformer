@@ -24,10 +24,11 @@ def main(lookback_window_length: int):
     process_pool = multiprocessing.Pool(processes=N_WORKERS)
     for i in range(0, len(all_processes) + N_WORKERS, N_WORKERS):
         try:
-            process_choices = process_pool[N_WORKERS * i: N_WORKERS * (i + 1)]
+            process_choices = all_processes[N_WORKERS * i: N_WORKERS * (i + 1)]
             process_pool.map(os.system, process_choices)
         except IndexError:
-            pass
+            process_choices = all_processes[N_WORKERS * i : ]
+            process_pool.map(os.system, process_choices)
 
 
 if __name__ == "__main__":
