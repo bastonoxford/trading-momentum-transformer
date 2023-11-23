@@ -8,7 +8,8 @@ from settings.default import (
     CPD_DEFAULT_LBW,
 )
 
-N_WORKERS = len(QUANDL_TICKERS)
+# N_WORKERS = len(QUANDL_TICKERS)
+N_WORKERS = 8
 
 
 def main(lookback_window_length: int):
@@ -19,8 +20,14 @@ def main(lookback_window_length: int):
         f'python -m examples.cpd_quandl "{ticker}" "{os.path.join(CPD_QUANDL_OUTPUT_FOLDER(lookback_window_length), ticker + ".csv")}" "1990-01-01" "2021-12-31" "{lookback_window_length}"'
         for ticker in QUANDL_TICKERS
     ]
+
     process_pool = multiprocessing.Pool(processes=N_WORKERS)
-    process_pool.map(os.system, all_processes)
+    for i in range(0, len(all_processes) + N_WORKERS, N_WORKERS):
+        try:
+            process_choices = process_pool[N_WORKERS * i: N_WORKERS * (i + 1)]
+            process_pool.map(os.system, process_choices)
+        except IndexError:
+            pass
 
 
 if __name__ == "__main__":
