@@ -3,6 +3,7 @@
 import csv
 import datetime as dt
 from typing import Dict, List, Optional, Tuple, Union
+import multiprocessing
 
 import gpflow
 import numpy as np
@@ -351,7 +352,9 @@ def run_module(
         writer.writerow(csv_fields)
     time_series_data['date'] = time_series_data.index
     time_series_data = time_series_data.reset_index(drop=True)
-    for window_end in range(lookback_window_length + 1, len(time_series_data)):
+
+    end_windows = list(range(lookback_window_length + 1, len(time_series_data)))
+    def cpd_for_window_end(window_end):
         ts_data_window = time_series_data.iloc[
             window_end - (lookback_window_length + 1) : window_end
         ]['date', 'daily_returns'].copy()
@@ -382,4 +385,9 @@ def run_module(
             writer.writerow(
                 [window_date, time_index, cp_loc, cp_loc_normalised, cp_score]
             )
+    with multiprocessing.Pool(processes=len(end_windows)) as pool:
+        pool.map(cpd_for_window_end, end_windows)
+
+    # for window_end in range(lookback_window_length + 1, len(time_series_data)):
+    
 
